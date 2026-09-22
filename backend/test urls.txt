@@ -1,0 +1,11 @@
+safe:
+https://www.care.com/
+https://www.viagogo.com/
+https://www.fabletics.com/
+
+
+
+safe:
+https://donate.wikimedia.org/
+https://github.com/pricing
+https://checkout.stripe.dev/

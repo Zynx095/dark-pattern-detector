@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: darkpattern_postgres
+    environment:
+      POSTGRES_DB: darkpattern_db
+      POSTGRES_USER: darkpattern_user
+      POSTGRES_PASSWORD: darkpattern_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darkpattern_user -d darkpattern_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: darkpattern_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://darkpattern_user:darkpattern_pass@postgres:5432/darkpattern_db
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
