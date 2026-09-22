@@ -41,9 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
     elif gemini_key:
         model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        print(
-            f"[AI ENGINE] Active Provider: Google Gemini API | Model: {model_name}"
-        )
+        print(f"[AI ENGINE] Active Provider: Google Gemini API | Model: {model_name}")
     else:
         print(
             "[AI ENGINE] WARNING: No LLM API key detected. System will default to mock mode."

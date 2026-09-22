@@ -125,7 +125,11 @@ async def analyze_screenshot(
         raise HTTPException(status_code=400, detail="File must be an image")
 
     os.makedirs("backend/uploads", exist_ok=True)
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "png"
+    ext = (
+        file.filename.split(".")[-1]
+        if file.filename and "." in file.filename
+        else "png"
+    )
     file_path = f"backend/uploads/{uuid.uuid4()}.{ext}"
 
     with open(file_path, "wb") as buffer:

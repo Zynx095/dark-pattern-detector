@@ -166,9 +166,7 @@ async def search_websites(
     Returns:
         List of matching IndexItemResponse objects.
     """
-    websites = (
-        db.query(Website).filter(Website.domain.ilike(f"%{q}%")).limit(10).all()
-    )
+    websites = db.query(Website).filter(Website.domain.ilike(f"%{q}%")).limit(10).all()
     result: List[Dict[str, Any]] = []
     for w in websites:
         major_patterns = (

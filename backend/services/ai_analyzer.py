@@ -156,9 +156,7 @@ def _parse_and_guardrail_result(raw_text: str) -> Dict[str, Any]:
         for p in result.get("patterns", [])
     )
     if has_fee_or_trap:
-        result["overall_risk_score"] = max(
-            80, int(result.get("overall_risk_score", 0))
-        )
+        result["overall_risk_score"] = max(80, int(result.get("overall_risk_score", 0)))
         result["risk_level"] = "high"
 
     return result
@@ -190,9 +188,7 @@ def _call_openai_llm(
     return _parse_and_guardrail_result(raw_content)
 
 
-def _call_gemini_llm(
-    api_key: str, model_name: str, contents: Any
-) -> Dict[str, Any]:
+def _call_gemini_llm(api_key: str, model_name: str, contents: Any) -> Dict[str, Any]:
     """Executes content generation request using google-genai SDK."""
     from google import genai
     from google.genai import types
@@ -272,10 +268,16 @@ async def analyze_screenshot_with_gemini(image_path: str) -> Dict[str, Any]:
             with open(image_path, "rb") as f:
                 image_bytes = f.read()
             ext = Path(image_path).suffix.lower().lstrip(".")
-            mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else "image/png" if ext == "png" else f"image/{ext}"
+            mime_type = (
+                "image/jpeg"
+                if ext in ["jpg", "jpeg"]
+                else "image/png" if ext == "png" else f"image/{ext}"
+            )
             image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             return _call_gemini_llm(
-                api_key, model_name, [image_part, "Analyze this screenshot for dark patterns."]
+                api_key,
+                model_name,
+                [image_part, "Analyze this screenshot for dark patterns."],
             )
     except Exception as e:
         print(f"[AI ENGINE] Error during screenshot analysis: {type(e).__name__}: {e}")

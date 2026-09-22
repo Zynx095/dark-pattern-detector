@@ -87,9 +87,7 @@ async def list_reports(
 
 
 @router.get("/{report_id}", response_model=ConsumerReportResponse)
-async def get_report(
-    report_id: int, db: Session = Depends(get_db)
-) -> ConsumerReport:
+async def get_report(report_id: int, db: Session = Depends(get_db)) -> ConsumerReport:
     """Retrieves a single consumer report by its unique ID.
 
     Args:

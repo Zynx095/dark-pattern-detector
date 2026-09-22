@@ -102,7 +102,9 @@ class TestAnalysisEndpoints:
         """Tests HTTP 400 when scraper fails to retrieve page."""
         mock_scrape.return_value = {"content": "", "error": "Connection timed out"}
 
-        response = client.post("/api/analyze/url", json={"url": "https://invalid-site.com"})
+        response = client.post(
+            "/api/analyze/url", json={"url": "https://invalid-site.com"}
+        )
         assert response.status_code == 400
         assert "Could not access website" in response.json()["detail"]
 
@@ -245,7 +247,9 @@ class TestCommunityEndpoints:
         assert bad_vote.status_code == 400
         assert "Vote must be 'confirm' or 'dispute'" in bad_vote.json()["detail"]
 
-        not_found_vote = client.post("/api/reports/99999/vote", json={"vote": "confirm"})
+        not_found_vote = client.post(
+            "/api/reports/99999/vote", json={"vote": "confirm"}
+        )
         assert not_found_vote.status_code == 404
 
     def test_community_index_and_search(self):

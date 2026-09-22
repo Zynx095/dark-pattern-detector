@@ -11,6 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, timezone
+from typing import Any
 import enum
 
 Base = declarative_base()

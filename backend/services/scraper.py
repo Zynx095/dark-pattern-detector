@@ -191,7 +191,5 @@ def extract_domain(url: str) -> str:
     Returns:
         Clean domain string without protocol or path.
     """
-    clean_url = (
-        url.replace("https://", "").replace("http://", "").replace("www.", "")
-    )
+    clean_url = url.replace("https://", "").replace("http://", "").replace("www.", "")
     return clean_url.split("/")[0].split("?")[0]
