@@ -11,7 +11,7 @@ import { getIndex, searchWebsites } from "@/lib/api";
 import { formatDate, formatPatternType } from "@/lib/utils-display";
 import type { IndexItem } from "@/types";
 import { Search, Globe, FileText } from "lucide-react";
-
+export const dynamic = "force-dynamic";
 export default function CommunityIndexPage() {
   const [items, setItems] = useState<IndexItem[] | null>(null);
   const [query, setQuery] = useState("");
