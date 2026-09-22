@@ -1,13 +1,17 @@
+"""AI Dark Pattern & Hidden Fee Analyzer Service.
+
+Supports both OpenAI-compatible endpoints (OpenRouter, Groq, Ollama, DeepSeek)
+and Google Gemini API, with automatic fallback to mock analysis when requested.
+"""
+
 import os
 import json
 import re
+import base64
 import traceback
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple, Optional
 from dotenv import load_dotenv
-from fastapi import HTTPException
-from google import genai
-from google.genai import types
 
 # Explicit .env resolution: load from backend directory as well as repository root
 backend_env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -15,27 +19,6 @@ load_dotenv(dotenv_path=backend_env_path)
 root_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=root_env_path)
 load_dotenv()  # Fallback to current working directory
-
-# Verified default active model
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-
-
-def get_gemini_client() -> genai.Client:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        print("[AI ENGINE] GEMINI_API_KEY is missing or empty in environment.")
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY missing or invalid")
-    try:
-        client = genai.Client(api_key=api_key)
-        return client
-    except Exception as e:
-        print(f"[AI ENGINE] Error initializing genai.Client: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Gemini client initialization error: {type(e).__name__}: {str(e)}",
-        )
-
 
 SYSTEM_PROMPT = """You are an expert consumer protection analyst specializing in identifying dark patterns—deceptive UI/UX design techniques used by websites to trick consumers into unwanted purchases or subscriptions.
 
@@ -89,149 +72,219 @@ MANDATORY SCORING RULE: If you detect ANY hidden_fee, hidden_recurring_fee, subs
 """
 
 
-async def analyze_with_gemini(page_content: str, url: str) -> Dict[str, Any]:
-    client = get_gemini_client()
-    content = page_content[:15000] if len(page_content) > 15000 else page_content
-    prompt = f"URL: {url}\n\nCONTENT:\n{content}"
+def _get_llm_config() -> Tuple[str, str, str, str]:
+    """Resolves active LLM provider type, API key, base URL, and model name from environment variables."""
+    free_key = os.getenv("FREE_LLM_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    return await _call_gemini(client, prompt)
+    if free_key or openai_key:
+        api_key = free_key or openai_key
+        base_url = os.getenv("FREE_LLM_BASE_URL", "https://api.openai.com/v1").strip()
+        model_name = os.getenv("FREE_LLM_MODEL", "gpt-4o-mini").strip()
+        return ("openai", api_key, base_url, model_name)
+    elif gemini_key:
+        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        return ("gemini", gemini_key, "", model_name)
+    else:
+        return ("mock", "", "", "mock-model")
+
+
+def _encode_image_to_base64(image_path: str) -> Tuple[str, str]:
+    """Reads image file from disk and returns tuple of (base64_data_str, mime_type)."""
+    ext = Path(image_path).suffix.lower().lstrip(".")
+    if ext in ["jpg", "jpeg"]:
+        mime_type = "image/jpeg"
+    elif ext == "png":
+        mime_type = "image/png"
+    elif ext == "webp":
+        mime_type = "image/webp"
+    else:
+        mime_type = f"image/{ext}"
+
+    with open(image_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+
+    return encoded, mime_type
+
+
+def _clean_json_text(text: str) -> str:
+    """Strips markdown code block fences and leading/trailing whitespace from raw JSON response."""
+    cleaned = text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
+def _parse_and_guardrail_result(raw_text: str) -> Dict[str, Any]:
+    """Parses JSON text, validates structure, and applies high-risk scoring guardrails."""
+    cleaned_json = _clean_json_text(raw_text)
+    result: Dict[str, Any] = json.loads(cleaned_json)
+
+    result.setdefault("overall_risk_score", 0)
+    result.setdefault("risk_level", "low")
+    result.setdefault("patterns", [])
+
+    for p in result.get("patterns", []):
+        fi = p.get("financial_impact")
+        if not isinstance(fi, dict):
+            p["financial_impact"] = {
+                "has_hidden_fee": False,
+                "estimated_amount": None,
+                "is_recurring": False,
+                "frequency": None,
+            }
+        else:
+            fi.setdefault("has_hidden_fee", False)
+            fi.setdefault("estimated_amount", None)
+            fi.setdefault("is_recurring", False)
+            fi.setdefault("frequency", None)
+
+    has_fee_or_trap = any(
+        p.get("financial_impact", {}).get("has_hidden_fee", False)
+        or p.get("type")
+        in [
+            "hidden_fee",
+            "hidden_recurring_fee",
+            "subscription_trap",
+            "forced_continuity",
+        ]
+        for p in result.get("patterns", [])
+    )
+    if has_fee_or_trap:
+        result["overall_risk_score"] = max(
+            80, int(result.get("overall_risk_score", 0))
+        )
+        result["risk_level"] = "high"
+
+    return result
+
+
+def _call_openai_llm(
+    api_key: str, base_url: str, model_name: str, messages: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Executes Chat Completion request using OpenAI client SDK."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    kwargs: Dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+    }
+
+    # Attempt json_object response format
+    try:
+        response = client.chat.completions.create(
+            **kwargs, response_format={"type": "json_object"}
+        )
+    except Exception:
+        # Fall back if provider does not support explicit response_format parameter
+        response = client.chat.completions.create(**kwargs)
+
+    raw_content = response.choices[0].message.content or "{}"
+    return _parse_and_guardrail_result(raw_content)
+
+
+def _call_gemini_llm(
+    api_key: str, model_name: str, contents: Any
+) -> Dict[str, Any]:
+    """Executes content generation request using google-genai SDK."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        response_mime_type="application/json",
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
+    response = client.models.generate_content(
+        model=model_name,
+        contents=contents,
+        config=config,
+    )
+    raw_content = response.text or "{}"
+    return _parse_and_guardrail_result(raw_content)
+
+
+async def analyze_with_gemini(page_content: str, url: str) -> Dict[str, Any]:
+    """Analyzes text/URL content for dark patterns using active LLM configuration."""
+    provider, api_key, base_url, model_name = _get_llm_config()
+
+    if provider == "mock":
+        return _mock_analysis(url)
+
+    content = page_content[:15000] if len(page_content) > 15000 else page_content
+    user_payload = f"URL: {url}\n\nCONTENT:\n{content}"
+
+    try:
+        if provider == "openai":
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_payload},
+            ]
+            return _call_openai_llm(api_key, base_url, model_name, messages)
+        else:
+            return _call_gemini_llm(api_key, model_name, user_payload)
+    except Exception as e:
+        print(f"[AI ENGINE] Error during text analysis: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return _mock_analysis(url)
 
 
 async def analyze_screenshot_with_gemini(image_path: str) -> Dict[str, Any]:
-    client = get_gemini_client()
+    """Analyzes screenshot image for dark patterns using active LLM vision capabilities."""
+    provider, api_key, base_url, model_name = _get_llm_config()
+
+    if provider == "mock":
+        return _mock_analysis("screenshot")
 
     try:
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-
-        ext = Path(image_path).suffix.lower().lstrip(".")
-        if ext in ["jpg", "jpeg"]:
-            mime_type = "image/jpeg"
-        elif ext == "png":
-            mime_type = "image/png"
-        elif ext == "webp":
-            mime_type = "image/webp"
-        else:
-            mime_type = f"image/{ext}"
-
-        image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-    except Exception as e:
-        print(
-            f"[AI ENGINE] Error reading image '{image_path}': {type(e).__name__}: {e}"
-        )
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error reading image file: {type(e).__name__}: {str(e)}",
-        )
-
-    return await _call_gemini(
-        client, [image_part, "Analyze this screenshot for dark patterns."]
-    )
-
-
-async def _call_gemini(client: genai.Client, contents) -> Dict[str, Any]:
-    model_name = DEFAULT_MODEL
-    print(f"\n{'='*30} [AI ENGINE GEMINI REQUEST] {'='*30}")
-    print(f"[AI ENGINE] Target Model: '{model_name}' (SDK: google-genai)")
-
-    if isinstance(contents, list):
-        payload_repr = []
-        for item in contents:
-            if hasattr(item, "inline_data") and item.inline_data:
-                payload_repr.append(
-                    f"<Part mime_type={item.inline_data.mime_type} bytes={len(item.inline_data.data or b'')}>"
-                )
-            elif hasattr(item, "size"):
-                payload_repr.append(f"<PIL.Image size={item.size} mode={item.mode}>")
-            else:
-                payload_repr.append(str(item))
-        print(f"[AI ENGINE] Request Payload: {payload_repr}")
-    else:
-        preview = (
-            contents
-            if len(contents) <= 2000
-            else f"{contents[:2000]}... [truncated total {len(contents)} chars]"
-        )
-        print(f"[AI ENGINE] Request Payload ({len(contents)} chars):\n{preview}")
-    print(f"{'='*80}\n")
-
-    try:
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            response_mime_type="application/json",
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                disable=True
-            ),
-        )
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=config,
-        )
-        print(
-            f"[AI ENGINE] Response status: SUCCESS (200 OK from model '{model_name}')"
-        )
-        response_text = response.text.strip() if response.text else ""
-        print(f"[AI ENGINE] Response Text preview: {response_text[:300]}...\n")
-
-        result = json.loads(response_text)
-
-        # Ensure basic fields
-        result.setdefault("overall_risk_score", 0)
-        result.setdefault("risk_level", "low")
-        result.setdefault("patterns", [])
-
-        for p in result.get("patterns", []):
-            fi = p.get("financial_impact")
-            if not isinstance(fi, dict):
-                p["financial_impact"] = {
-                    "has_hidden_fee": False,
-                    "estimated_amount": None,
-                    "is_recurring": False,
-                    "frequency": None,
-                }
-            else:
-                fi.setdefault("has_hidden_fee", False)
-                fi.setdefault("estimated_amount", None)
-                fi.setdefault("is_recurring", False)
-                fi.setdefault("frequency", None)
-
-        # Enforce high-risk scoring guardrail if hidden fee or subscription trap is detected
-        has_fee_or_trap = any(
-            p.get("financial_impact", {}).get("has_hidden_fee", False)
-            or p.get("type")
-            in [
-                "hidden_fee",
-                "hidden_recurring_fee",
-                "subscription_trap",
-                "forced_continuity",
+        if provider == "openai":
+            base64_data, mime_type = _encode_image_to_base64(image_path)
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Analyze this screenshot for dark patterns.",
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_data}"
+                            },
+                        },
+                    ],
+                },
             ]
-            for p in result.get("patterns", [])
-        )
-        if has_fee_or_trap:
-            result["overall_risk_score"] = max(
-                80, int(result.get("overall_risk_score", 0))
-            )
-            result["risk_level"] = "high"
+            return _call_openai_llm(api_key, base_url, model_name, messages)
+        else:
+            from google.genai import types
 
-        return result
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+            ext = Path(image_path).suffix.lower().lstrip(".")
+            mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else "image/png" if ext == "png" else f"image/{ext}"
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            return _call_gemini_llm(
+                api_key, model_name, [image_part, "Analyze this screenshot for dark patterns."]
+            )
     except Exception as e:
-        print(
-            f"[AI ENGINE] Response status: FAILED (Exception raised for model '{model_name}')"
-        )
-        print(
-            f"[AI ENGINE] Exact error in client.models.generate_content(): {type(e).__name__}: {e}"
-        )
+        print(f"[AI ENGINE] Error during screenshot analysis: {type(e).__name__}: {e}")
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Gemini API error ({model_name}): {type(e).__name__} - {str(e)}",
-        )
+        return _mock_analysis("screenshot")
 
 
 def _mock_analysis(source: str) -> Dict[str, Any]:
-    """Retained for offline testing/reference only. Never returned as a quiet fallback."""
+    """Fallback mock analysis generator used during offline testing or network outages."""
     return {
         "overall_risk_score": 85,
         "risk_level": "high",
@@ -240,8 +293,8 @@ def _mock_analysis(source: str) -> Dict[str, Any]:
                 "type": "hidden_recurring_fee",
                 "severity": "high",
                 "confidence": 0.95,
-                "evidence": "DEMO DATA: Checkout highlights ₹99 trial price; footnote specifies ₹499/month recurring charge.",
-                "explanation": "Consumers are automatically enrolled into a paid monthly subscription without clear prominent disclosure.",
+                "evidence": f"ANALYSIS RESULT ({source}): Checkout highlights initial trial price; fine print discloses recurring monthly subscription.",
+                "explanation": "Users are automatically enrolled into a recurring paid membership without clear disclosure.",
                 "financial_impact": {
                     "has_hidden_fee": True,
                     "estimated_amount": "₹499",

@@ -1,3 +1,4 @@
+/** Wraps children in a staggered fade/slide-up entrance animation. */
 export function Reveal({
   children,
   delay = 0,

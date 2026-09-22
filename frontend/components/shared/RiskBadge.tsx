@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { riskColorClasses } from "@/lib/utils-display";
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
 
+/** Badge showing a risk level (low/medium/high) with a matching icon and color. */
 export function RiskBadge({ level }: { level: string }) {
   const Icon =
     level?.toLowerCase() === "high"

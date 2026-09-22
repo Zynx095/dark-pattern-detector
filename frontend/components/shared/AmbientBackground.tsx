@@ -1,3 +1,4 @@
+/** Decorative, non-interactive background grid and glow effects behind page content. */
 export function AmbientBackground() {
   return (
     <div

@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import type { FinancialImpact } from "@/types";
 
+/** Prominent warning banner for a hidden or undisclosed fee; renders nothing if none was found. */
 export function HiddenFeeAlert({ impact }: { impact: FinancialImpact }) {
   if (!impact?.has_hidden_fee) return null;
 

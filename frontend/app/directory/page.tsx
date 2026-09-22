@@ -12,6 +12,8 @@ import { formatDate, formatPatternType } from "@/lib/utils-display";
 import type { IndexItem } from "@/types";
 import { Search, Globe, FileText } from "lucide-react";
 export const dynamic = "force-dynamic";
+
+/** Community safety index: browse and search domains that have been reported. */
 export default function CommunityIndexPage() {
   const [items, setItems] = useState<IndexItem[] | null>(null);
   const [query, setQuery] = useState("");

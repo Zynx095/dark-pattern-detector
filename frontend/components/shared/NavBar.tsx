@@ -3,9 +3,10 @@ import { ShieldCheck } from "lucide-react";
 
 const links = [
   { href: "/", label: "Analyze" },
-  { href: "/index", label: "Community Index" },
+  { href: "/directory", label: "Community Index" },
 ];
 
+/** Sticky top navigation bar shown on every page. */
 export function NavBar() {
   return (
     <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 sticky top-0 z-10">

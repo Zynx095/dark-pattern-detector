@@ -1,3 +1,4 @@
+/** Tailwind classes for a risk-level badge (low/medium/high). */
 export function riskColorClasses(level: string): string {
   switch (level?.toLowerCase()) {
     case "high":
@@ -9,6 +10,7 @@ export function riskColorClasses(level: string): string {
   }
 }
 
+/** Tailwind classes coloring a risk-score progress bar's fill. */
 export function riskProgressColor(level: string): string {
   switch (level?.toLowerCase()) {
     case "high":
@@ -20,6 +22,7 @@ export function riskProgressColor(level: string): string {
   }
 }
 
+/** Tailwind classes for a severity badge (low/medium/high). */
 export function severityColorClasses(severity: string): string {
   switch (severity?.toLowerCase()) {
     case "high":
@@ -31,6 +34,7 @@ export function severityColorClasses(severity: string): string {
   }
 }
 
+/** Formats an ISO date string for display, or "—" when absent/invalid. */
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   try {
@@ -44,6 +48,7 @@ export function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+/** Converts a snake_case pattern type into a human-readable title. */
 export function formatPatternType(type: string): string {
   return type
     .split("_")

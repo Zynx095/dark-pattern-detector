@@ -5,6 +5,7 @@ import { severityColorClasses, formatPatternType } from "@/lib/utils-display";
 import type { DetectedPattern } from "@/types";
 import { Terminal } from "lucide-react";
 
+/** Displays a single detected dark pattern: severity, extracted evidence, and explanation. */
 export function PatternCard({ pattern }: { pattern: DetectedPattern }) {
   return (
     <Card className="border-slate-200 transition-shadow hover:shadow-md dark:border-slate-800">

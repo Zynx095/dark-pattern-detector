@@ -119,7 +119,8 @@ class DetectedPattern(Base):
     analysis = relationship("AnalysisResult", back_populates="patterns")
 
     @property
-    def financial_impact(self):
+    def financial_impact(self) -> dict[str, Any]:
+        """Returns structured dictionary representation of pattern's financial impact."""
         return {
             "has_hidden_fee": bool(self.has_hidden_fee),
             "estimated_amount": self.estimated_amount,

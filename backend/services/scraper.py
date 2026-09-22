@@ -1,7 +1,10 @@
+"""Web scraping and DOM text extraction service."""
+
+import re
+import functools
+from typing import Dict, Optional
 import httpx
 from bs4 import BeautifulSoup
-from typing import Dict, Optional
-import re
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -11,8 +14,15 @@ HEADERS = {
 }
 
 
-async def scrape_website(url: str) -> Dict[str, str]:
-    """Scrape website content for analysis"""
+async def scrape_website(url: str) -> Dict[str, Optional[str]]:
+    """Asynchronously fetches target website HTML and extracts DOM text content.
+
+    Args:
+        url: The web page URL to scrape.
+
+    Returns:
+        Dict containing url, domain, title, content, html_length, and error status.
+    """
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
@@ -32,6 +42,8 @@ async def scrape_website(url: str) -> Dict[str, str]:
             "url": url,
             "content": "",
             "title": "",
+            "domain": extract_domain(url),
+            "html_length": 0,
         }
     except httpx.HTTPStatusError as e:
         return {
@@ -39,6 +51,8 @@ async def scrape_website(url: str) -> Dict[str, str]:
             "url": url,
             "content": "",
             "title": "",
+            "domain": extract_domain(url),
+            "html_length": 0,
         }
     except Exception as e:
         return {
@@ -46,11 +60,21 @@ async def scrape_website(url: str) -> Dict[str, str]:
             "url": url,
             "content": "",
             "title": "",
+            "domain": extract_domain(url),
+            "html_length": 0,
         }
 
 
-def extract_content(html: str, url: str) -> Dict[str, str]:
-    """Extract meaningful text content from HTML"""
+def extract_content(html: str, url: str) -> Dict[str, Optional[str]]:
+    """Parses HTML DOM to extract key CTA buttons, forms, prechecked boxes, and prices.
+
+    Args:
+        html: Raw HTML string.
+        url: Source URL string.
+
+    Returns:
+        Structured dictionary containing extracted page text and metadata.
+    """
     try:
         soup = BeautifulSoup(html, "html.parser")
     except Exception:
@@ -64,13 +88,13 @@ def extract_content(html: str, url: str) -> Dict[str, str]:
     if soup.title and soup.title.string:
         title = soup.title.string.strip()
 
-    important_elements = []
+    important_elements: list[str] = []
 
     # Buttons and CTAs
     buttons = soup.find_all(["button", "a"])
     for btn in buttons[:30]:
         text = btn.get_text(strip=True)
-        if text and len(text) > 2 and len(text) < 100:
+        if text and 2 < len(text) < 100:
             important_elements.append(f"[BUTTON] {text}")
 
     # Forms
@@ -157,7 +181,17 @@ def extract_content(html: str, url: str) -> Dict[str, str]:
     }
 
 
+@functools.lru_cache(maxsize=1024)
 def extract_domain(url: str) -> str:
-    """Extract clean domain from URL"""
-    url = url.replace("https://", "").replace("http://", "").replace("www.", "")
-    return url.split("/")[0].split("?")[0]
+    """Extracts clean domain name from URL string with LRU caching.
+
+    Args:
+        url: Full web address string.
+
+    Returns:
+        Clean domain string without protocol or path.
+    """
+    clean_url = (
+        url.replace("https://", "").replace("http://", "").replace("www.", "")
+    )
+    return clean_url.split("/")[0].split("?")[0]

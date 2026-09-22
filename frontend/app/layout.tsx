@@ -20,6 +20,7 @@ export const metadata: Metadata = {
     "Analyze websites for deceptive dark patterns and hidden recurring fees. Report and track community-validated safety data.",
 };
 
+/** Root layout: fonts, global background chrome, and the site navigation bar. */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html

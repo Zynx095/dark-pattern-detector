@@ -4,16 +4,17 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/shared/RiskBadge";
+import { ReportListItem } from "@/components/domain/ReportListItem";
 import { getWebsiteProfile, voteOnReport } from "@/lib/api";
-import { riskProgressColor, formatDate, formatPatternType, severityColorClasses } from "@/lib/utils-display";
+import { riskProgressColor, formatDate, formatPatternType } from "@/lib/utils-display";
 import type { WebsiteProfile } from "@/types";
-import { ThumbsUp, ThumbsDown, Globe, FileText } from "lucide-react";
+import { Globe, FileText } from "lucide-react";
 
+/** Public profile page for a single domain: its risk score and community report history. */
 export default function DomainProfilePage({
   params,
 }: {
@@ -72,7 +73,7 @@ export default function DomainProfilePage({
         <Globe className="mx-auto mb-3 size-10 text-muted-foreground" />
         <p className="text-lg font-semibold">Domain not found</p>
         <p className="mb-4 text-sm text-muted-foreground">{error}</p>
-        <Link href="/index" className={buttonVariants({ variant: "secondary" })}>
+        <Link href="/directory" className={buttonVariants({ variant: "secondary" })}>
           Back to Community Index
         </Link>
       </div>
@@ -132,52 +133,13 @@ export default function DomainProfilePage({
         ) : (
           <div className="space-y-3">
             {profile.recent_reports.map((report, i) => (
-              <Card key={report.id}>
-                <CardContent className="space-y-3 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge className={severityColorClasses(report.severity || "medium")} variant="secondary">
-                      {formatPatternType(report.pattern_type)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(report.created_at)}
-                    </span>
-                  </div>
-                  <p className="text-sm leading-relaxed">{report.description}</p>
-                  {report.evidence && (
-                    <p className="rounded-md bg-slate-50 p-2 text-xs text-muted-foreground dark:bg-slate-900">
-                      {report.evidence}
-                    </p>
-                  )}
-                  {i < profile.recent_reports.length && <Separator />}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      Community confidence: {Math.round(report.community_score * 100)}%
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={votingId === report.id}
-                        onClick={() => handleVote(report.id, "confirm")}
-                        className="gap-1.5 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950 dark:hover:text-emerald-300"
-                      >
-                        <ThumbsUp className="size-3.5" />
-                        Confirm
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={votingId === report.id}
-                        onClick={() => handleVote(report.id, "dispute")}
-                        className="gap-1.5 transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950 dark:hover:text-red-300"
-                      >
-                        <ThumbsDown className="size-3.5" />
-                        Dispute
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <ReportListItem
+                key={report.id}
+                report={report}
+                isLast={i === profile.recent_reports.length - 1}
+                votingId={votingId}
+                onVote={handleVote}
+              />
             ))}
           </div>
         )}
@@ -186,6 +148,7 @@ export default function DomainProfilePage({
   );
 }
 
+/** Small labeled stat tile used in the domain profile summary grid. */
 function Stat({
   label,
   value,

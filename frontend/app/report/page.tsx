@@ -28,6 +28,7 @@ const PATTERN_CATEGORIES = [
   { value: "other", label: "Other Deceptive Pattern" },
 ];
 
+/** Form for submitting a community report about a deceptive pattern encountered on a site. */
 function ReportForm() {
   const params = useSearchParams();
   const router = useRouter();
@@ -55,7 +56,7 @@ function ReportForm() {
         evidence: evidence.trim() || undefined,
       });
       setSuccess(true);
-      setTimeout(() => router.push("/index"), 1200);
+      setTimeout(() => router.push("/directory"), 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit report.");
     } finally {
@@ -171,6 +172,7 @@ function ReportForm() {
   );
 }
 
+/** Route wrapper providing the Suspense boundary `useSearchParams` requires. */
 export default function ReportPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
